@@ -27,6 +27,10 @@ env/
 .DS_Store
 Thumbs.db
 
+# Sensitive files (do not commit)
+激活码生成器.html
+*.whl
+
 # Logs
 *.log
 
