@@ -1,0 +1,13 @@
+# AI换脸应用 - 核心依赖
+# 安装: pip install -r requirements.txt
+# GPU加速 (Windows): 已包含 onnxruntime-directml，需额外下载 onnxruntime_directml-1.24.4-cp311-cp311-win_amd64.whl
+
+flask>=3.1
+flask-cors>=6.0
+flask-compress>=1.23
+opencv-python>=4.13
+numpy>=2.4
+onnxruntime-directml>=1.24
+insightface>=0.2.1
+onnx>=1.20
+Pillow>=12.0

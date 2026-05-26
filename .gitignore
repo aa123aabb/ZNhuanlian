@@ -1,0 +1,45 @@
+# Environment
+.env
+.env.*
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Virtual Environment
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node
+node_modules/
+
+# Bundled dependencies (use pip install -r requirements.txt instead)
+libs/
+
+# Salt config (contains secrets, do not commit)
+.salt
+
+# Activation state (per-machine)
+.activated
+.trial
+.sys_cache

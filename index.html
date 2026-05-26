@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI换脸工具 - 仅供娱乐</title>
+    
+    <!-- OBS兼容性自动优化 -->
+    <script>
+        // 自动检测OBS环境并优化兼容性
+        (function() {
+            // 检测是否在OBS浏览器源中运行
+            const isOBS = navigator.userAgent.includes('OBS') || 
+                         window.location.href.includes('obs') ||
+                         document.referrer.includes('obs');
+            
+            // 检测是否在录制/直播环境中
+            const isRecordingEnv = window.performance.memory || 
+                                 navigator.mediaDevices.getDisplayMedia ||
+                                 navigator.getDisplayMedia;
+            
+            if (isOBS || isRecordingEnv) {
+                console.log('检测到OBS/录制环境，启用兼容性模式');
+                
+                // 禁用硬件加速优化
+                document.documentElement.classList.add('obs-compatible');
+                
+                // 强制使用CPU渲染的CSS
+                const obsStyle = document.createElement('style');
+                obsStyle.textContent = `
+                    .obs-compatible * {
+                        transform: none !important;
+                        filter: none !important;
+                        will-change: auto !important;
+                        backface-visibility: visible !important;
+                    }
+                    .obs-compatible canvas {
+                        image-rendering: crisp-edges !important;
+                        image-rendering: pixelated !important;
+                    }
+                    .obs-compatible body {
+                        background: #1a202c !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+                `;
+                document.head.appendChild(obsStyle);
+                
+                // 优化Canvas渲染方式
+                const originalGetContext = HTMLCanvasElement.prototype.getContext;
+                HTMLCanvasElement.prototype.getContext = function(type, attributes) {
+                    if (type === 'webgl' || type === 'webgl2') {
+                        console.log('OBS模式：禁用WebGL，使用2D渲染');
+                        return originalGetContext.call(this, '2d', attributes);
+                    }
+                    return originalGetContext.call(this, type, attributes);
+                };
+            }
+        })();
+    </script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
+    <!-- MediaPipe Face Mesh (可选，用于本地模式) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous" onerror="console.warn('MediaPipe FaceMesh 加载失败，将使用API模式')"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous" onerror="console.warn('MediaPipe CameraUtils 加载失败')"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous" onerror="console.warn('MediaPipe DrawingUtils 加载失败')"></script>
+    <!-- face-api.js for 68-point landmarks -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js" onerror="console.warn('face-api.js 加载失败')"></script>
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+    <!-- Advanced Face Swap Algorithm -->
+    <script src="js/advancedFaceSwap.js" onerror="console.warn('AdvancedFaceSwap 加载失败')"></script>
+    <!-- OBS兼容性自动优化 -->
+    <script src="js/obsCompatibility.js"></script>
+    <!-- 激活码界面内联样式（确保即使CDN失败也能显示） -->
+    <style>
+        #activationOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #111827;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        #activationOverlay .activation-box {
+            background: #1f2937;
+            border-radius: 12px;
+            padding: 32px;
+            max-width: 400px;
+            width: 90%;
+            border: 1px solid #374151;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+        #activationOverlay h2 {
+            font-size: 24px;
+            font-weight: bold;
+            background: linear-gradient(to right, #818cf8, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        #activationOverlay p {
+            color: #9ca3af;
+            font-size: 14px;
+            text-align: center;
+        }
+        #activationOverlay input {
+            width: 100%;
+            background: #374151;
+            border: 1px solid #4b5563;
+            border-radius: 8px;
+            padding: 12px;
+            color: white;
+            text-align: center;
+            font-size: 18px;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            margin: 16px 0;
+            box-sizing: border-box;
+        }
+        #activationOverlay input:focus {
+            outline: none;
+            border-color: #6366f1;
+        }
+        #activationOverlay button {
+            width: 100%;
+            background: linear-gradient(to right, #6366f1, #8b5cf6);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        #activationOverlay button:hover {
+            transform: scale(1.02);
+        }
+        #activationOverlay button:active {
+            transform: scale(0.98);
+        }
+        #activationOverlay .error-text {
+            color: #f87171;
+            font-size: 14px;
+            text-align: center;
+            margin-top: 8px;
+            display: none;
+        }
+        #activationOverlay .icon-wrapper {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(to right, #6366f1, #8b5cf6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+        }
+        #activationOverlay .icon-wrapper svg {
+            width: 40px;
+            height: 40px;
+            color: white;
+        }
+        #activationOverlay .footer-text {
+            color: #6b7280;
+            font-size: 12px;
+            text-align: center;
+            margin-top: 24px;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6366f1',
+                        secondary: '#8b5cf6',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="dark bg-gray-900 text-white min-h-screen flex flex-col">
+    <!-- 启动免责声明弹窗 -->
+    <div id="disclaimerOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:#111827;display:flex;align-items:center;justify-content:center;z-index:10000;">
+        <div style="background:#1f2937;border-radius:12px;padding:32px;max-width:500px;width:90%;border:1px solid #374151;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);">
+            <div style="text-align:center;margin-bottom:20px;">
+                <div style="width:60px;height:60px;background:linear-gradient(135deg,#f59e0b,#ef4444);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                    <svg style="width:32px;height:32px;color:white;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <h2 style="font-size:20px;font-weight:bold;color:#f59e0b;margin-bottom:8px;">重要声明</h2>
+            </div>
+            <div style="color:#9ca3af;font-size:14px;line-height:1.8;margin-bottom:24px;">
+                <p style="margin-bottom:12px;"><strong style="color:#f87171;">⚠️ 本软件仅供娱乐用途，严禁用于：</strong></p>
+                <ul style="list-style:disc;padding-left:20px;margin-bottom:16px;">
+                    <li>任何违法违规行为</li>
+                    <li>侵犯他人肖像权、名誉权或隐私</li>
+                    <li>制作虚假信息或欺诈内容</li>
+                    <li>任何商业用途</li>
+                </ul>
+                <p style="color:#6b7280;font-size:12px;">使用者须对自身行为承担全部法律责任。点击"同意并继续"即表示您已阅读并同意以上条款。</p>
+            </div>
+            <button id="disclaimerAgreeBtn" style="width:100%;background:linear-gradient(to right,#f59e0b,#ef4444);color:white;border:none;border-radius:8px;padding:12px;font-size:16px;cursor:pointer;font-weight:500;">同意并继续</button>
+        </div>
+    </div>
+    <script>
+        // 免责声明弹窗逻辑
+        document.getElementById('disclaimerAgreeBtn').addEventListener('click', function() {
+            document.getElementById('disclaimerOverlay').style.display = 'none';
+            sessionStorage.setItem('disclaimer_agreed', 'true');
+        });
+        // 如果已同意，直接隐藏
+        if (sessionStorage.getItem('disclaimer_agreed') === 'true') {
+            document.getElementById('disclaimerOverlay').style.display = 'none';
+        }
+        
+        // 浏览器兼容性检测
+        (function checkBrowser() {
+            const isChrome = /Chrome/.test(navigator.userAgent) && !/Edg/.test(navigator.userAgent);
+            const isEdge = /Edg/.test(navigator.userAgent);
+            const is360 = /360/.test(navigator.userAgent) || /QIHU/.test(navigator.userAgent);
+            const isFirefox = /Firefox/.test(navigator.userAgent);
+            
+            // 检测摄像头API支持
+            const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+            
+            if (!hasMediaDevices) {
+                setTimeout(function() {
+                    if (document.getElementById('disclaimerOverlay').style.display === 'none') {
+                        alert('注意：您的浏览器可能不支持摄像头调用。\n\n推荐使用：\n1. Google Chrome (推荐)\n2. Microsoft Edge\n3. 360极速浏览器\n\n如果您已安装以上浏览器，请用其打开本程序。');
+                    }
+                }, 1500);
+            }
+        })();
+    </script>
+
+    <!-- 激活码验证层 -->
+    <div id="activationOverlay" style="display: none;">
+        <div class="activation-box">
+            <div class="icon-wrapper">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+            </div>
+            <h2>AI换脸工具</h2>
+            
+            <!-- 试用状态显示 -->
+            <p id="trialInfo" style="display:none;margin-bottom:12px;"></p>
+            
+            <!-- 机器码显示区 -->
+            <div style="background:#1f2937;border:1px solid #374151;border-radius:8px;padding:12px;margin-bottom:16px;">
+                <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">您的机器码（激活时需提供）</div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <code id="machineCodeDisplay" style="display:block;font-family:'Consolas','Monaco',monospace;font-size:16px;color:#60a5fa;letter-spacing:2px;text-align:center;padding:8px;background:#111827;border-radius:4px;user-select:all;">加载中...</code>
+                    <button id="getMachineCodeBtn" style="padding:8px 16px;background:#6366f1;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500;">复制机器码</button>
+                </div>
+            </div>
+            
+            <p style="font-size:13px;color:#9ca3af;margin-bottom:12px;">请输入激活码以解锁无水印版本</p>
+            <input type="text" id="activationCode" placeholder="请输入激活码（格式：XXXX-XXXX-XXXX-XXXX）" maxlength="25" autocomplete="off">
+            <button id="activateBtn">激活</button>
+            <p id="activationError" class="error-text">激活码无效，请检查后重试</p>
+            <p class="footer-text">激活流程：复制机器码 → 联系软件提供者 → 获取激活码 → 输入激活</p>
+        </div>
+    </div>
+
+    <!-- 顶部导航栏 -->
+    <header class="h-[50px] bg-gray-800 border-b border-gray-700 flex items-center px-4 justify-between shrink-0">
+        <div class="flex items-center gap-2">
+            <span class="text-xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">AI换脸工具</span>
+            <!-- 激活状态显示 -->
+            <div id="activationStatusBadge" class="hidden ml-3 px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1"></div>
+        </div>
+        <nav class="hidden md:flex items-center gap-6">
+            <a href="#" class="nav-link active" data-page="main">换脸中心</a>
+            <a href="#" class="nav-link" data-page="about" id="navAbout">关于</a>
+        </nav>
+        <div class="flex items-center gap-3">
+            <select id="presetSelect" class="bg-gray-700 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:border-indigo-500">
+                <option value="">预设管理</option>
+            </select>
+            <button id="themeToggle" class="p-2 rounded hover:bg-gray-700 transition-colors" title="切换主题">
+                <svg class="w-5 h-5 sun-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+                </svg>
+                <svg class="w-5 h-5 moon-icon hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                </svg>
+            </button>
+            <!-- 移动端菜单按钮 -->
+            <button id="mobileMenuBtn" class="md:hidden p-2 rounded hover:bg-gray-700">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- 主体内容 -->
+    <main class="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <!-- 左侧操作区 -->
+        <aside id="sidebar" class="w-full md:w-80 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0 md:translate-x-0 -translate-x-full md:relative absolute z-20 h-[calc(100%-130px)] md:h-auto transition-transform">
+            <!-- 人脸素材库 -->
+            <div class="p-4 border-b border-gray-700">
+                <h3 class="text-sm font-semibold text-gray-300 mb-3 flex items-center justify-between">
+                    <span>人脸素材库</span>
+                    <span class="text-xs text-gray-500" id="faceCount">0/8</span>
+                </h3>
+                <!-- 素材网格 -->
+                <div id="faceGrid" class="grid grid-cols-4 gap-2 mb-3 min-h-[72px]">
+                    <!-- 素材缩略图动态生成 -->
+                </div>
+                <!-- 上传区域 -->
+                <div id="uploadZone" class="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center hover:border-indigo-500 transition-colors cursor-pointer">
+                    <input type="file" id="fileInput" accept="image/jpeg,image/png" multiple class="hidden">
+                    <svg class="w-8 h-8 mx-auto text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                    </svg>
+                    <p class="text-xs text-gray-500">点击或拖拽上传人脸图片</p>
+                    <p class="text-xs text-gray-600 mt-1">支持 JPG/PNG 格式</p>
+                </div>
+            </div>
+
+            <!-- 效果调节区 -->
+            <div class="p-4 flex-1 overflow-y-auto">
+                <h3 class="text-sm font-semibold text-gray-300 mb-4">效果调节</h3>
+                
+                <!-- 换脸模型选择 -->
+                <div class="mb-4">
+                    <div class="text-xs text-gray-400 mb-2">换脸模型</div>
+                    <div class="flex gap-2">
+                        <button class="swap-model-btn flex-1 px-3 py-2 bg-gray-700 rounded text-sm border border-gray-600 hover:border-indigo-500 transition-colors active" data-model="inswapper">
+                            <div class="font-medium">InSwapper</div>
+                            <div class="text-xs text-gray-500">稳定版</div>
+                        </button>
+                        <button class="swap-model-btn flex-1 px-3 py-2 bg-gray-700/50 rounded text-sm border border-gray-600 cursor-not-allowed opacity-60" data-model="hyperswap" disabled>
+                            <div class="font-medium text-gray-400">HyperSwap</div>
+                            <div class="text-xs text-yellow-500">敬请期待</div>
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-600 mt-1" id="modelDescription">InSwapper: 速度快，效果稳定</p>
+                </div>
+
+                <!-- 高级选项 -->
+                <div class="mb-4 p-3 bg-gray-700/50 rounded-lg">
+                    <div class="text-xs text-gray-400 mb-3">高级选项</div>
+                    
+                    <!-- 人脸分割开关 -->
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs text-gray-300">人脸分割增强</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="faceParserToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    
+                    <!-- 色彩校正开关 -->
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-gray-300">色彩校正</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="colorCorrectionToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- 相似度滑块 -->
+                <div class="mb-4">
+                    <div class="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>相似度</span>
+                        <span id="similarityValue">60%</span>
+                    </div>
+                    <input type="range" id="similaritySlider" min="0" max="100" value="60" class="slider w-full">
+                </div>
+                
+                <!-- 修复强度滑块 -->
+                <div class="mb-4">
+                    <div class="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>修复强度</span>
+                        <span id="repairValue">50%</span>
+                    </div>
+                    <input type="range" id="repairSlider" min="0" max="80" value="50" class="slider w-full">
+                </div>
+
+                <!-- 输出比例选择 -->
+                <div class="mb-4">
+                    <div class="text-xs text-gray-400 mb-2">输出比例（适配OBS/视频通话）</div>
+                    <div class="flex gap-2 mb-2">
+                        <button class="aspect-btn flex-1 px-2 py-1 bg-gray-700 rounded text-xs border border-gray-600" data-aspect="16:9">16:9 横屏</button>
+                        <button class="aspect-btn flex-1 px-2 py-1 bg-gray-700 rounded text-xs border border-gray-600 active" data-aspect="9:16">9:16 竖屏</button>
+                    </div>
+                    <p class="text-xs text-gray-600 mt-1">推荐：微信/QQ视频通话用 9:16 竖屏</p>
+                </div>
+
+                <!-- 摄像头选择 -->
+                <div class="mb-4">
+                    <div class="text-xs text-gray-400 mb-2">摄像头</div>
+                    <select id="cameraSelect" class="w-full bg-gray-700 text-sm rounded px-3 py-2 border border-gray-600 focus:outline-none focus:border-indigo-500">
+                        <option value="">加载中...</option>
+                    </select>
+                </div>
+
+                <!-- 性能模式 -->
+                <div class="mb-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-gray-400">节能模式</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="powerSaveToggle">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-600 mt-1">降低分辨率和帧率以节省性能</p>
+                </div>
+
+                <!-- API服务器配置 -->
+                <div class="mb-4 pt-4 border-t border-gray-700">
+                    <div class="text-xs text-gray-400 mb-2">换脸服务器</div>
+                    <div class="flex gap-2">
+                        <input type="text" id="apiUrlInput" 
+                            class="flex-1 bg-gray-700 text-sm rounded px-3 py-2 border border-gray-600 focus:outline-none focus:border-indigo-500" 
+                            placeholder="http://localhost:5000"
+                            value="http://localhost:5000">
+                        <button id="apiConnectBtn" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 rounded text-sm transition-colors">
+                            连接
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="w-2 h-2 rounded-full bg-gray-500" id="apiIndicator"></span>
+                        <span class="text-xs text-gray-500" id="apiStatusText">未连接</span>
+                    </div>
+                    <p class="text-xs text-gray-600 mt-1">本地exe默认localhost:5000</p>
+                </div>
+
+                <!-- 控制按钮 -->
+                <div class="space-y-2 mt-6">
+                    <button id="startBtn" class="w-full py-2.5 rounded-lg bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 font-medium transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                        开始换脸
+                    </button>
+                    <button id="stopBtn" class="w-full py-2.5 rounded-lg bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 font-medium transition-all transform hover:scale-[1.02] active:scale-[0.98] hidden">
+                        停止换脸
+                    </button>
+                    <button id="pipBtn" class="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 font-medium transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                        画中画模式
+                    </button>
+                    <button id="obsFullscreenBtn" class="w-full py-2.5 rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 font-medium transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                        OBS全屏
+                    </button>
+                </div>
+
+                <!-- 预设保存 -->
+                <div class="mt-4 pt-4 border-t border-gray-700">
+                    <button id="savePresetBtn" class="w-full py-2 rounded border border-gray-600 text-sm text-gray-400 hover:border-indigo-500 hover:text-indigo-400 transition-colors">
+                        保存当前配置为预设
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 预览展示区 -->
+        <section class="flex-1 flex flex-col p-4 overflow-hidden">
+            <div class="flex-1 flex flex-col md:flex-row gap-4 min-h-0">
+                <!-- 换脸画面（放在左边，便于OBS捕获） -->
+                <div class="flex-1 flex flex-col min-h-0">
+                    <div class="relative flex-1 bg-gray-800 rounded-lg overflow-hidden min-h-[200px]" id="swappedContainer">
+                        <canvas id="swappedCanvas" class="w-full h-full object-contain"></canvas>
+                        <div class="absolute top-2 left-2 bg-black/50 px-2 py-1 rounded text-xs">换脸效果</div>
+                        <div class="absolute bottom-2 left-2 bg-black/50 px-2 py-1 rounded text-xs">
+                            <span id="swappedFps">0</span> FPS | <span id="latency">0</span>ms
+                        </div>
+                        <!-- 换脸状态 -->
+                        <div id="swapStatus" class="absolute top-2 right-2 bg-black/50 px-2 py-1 rounded text-xs">
+                            等待开始
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 原始画面（放在右边，供对比参考） -->
+                <div class="flex-1 flex flex-col min-h-0">
+                    <div class="relative flex-1 bg-gray-800 rounded-lg overflow-hidden min-h-[200px]">
+                        <video id="originalVideo" class="w-full h-full object-contain" autoplay playsinline muted></video>
+                        <canvas id="originalCanvas" class="absolute inset-0 w-full h-full object-contain hidden"></canvas>
+                        <div class="absolute top-2 left-2 bg-black/50 px-2 py-1 rounded text-xs">原始画面</div>
+                        <div class="absolute bottom-2 left-2 bg-black/50 px-2 py-1 rounded text-xs">
+                            <span id="originalFps">0</span> FPS
+                        </div>
+                        <!-- 人脸检测状态 -->
+                        <div id="faceStatus" class="absolute top-2 right-2 bg-black/50 px-2 py-1 rounded text-xs flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-gray-500" id="faceIndicator"></span>
+                            <span id="faceStatusText">等待检测</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 状态栏 -->
+            <div class="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500 bg-gray-800/50 rounded-lg px-4 py-2">
+                <div class="flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full" id="performanceIndicator"></span>
+                    <span id="performanceMode">标准模式</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    <span id="cameraStatus">摄像头未连接</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    <span id="gpuStatus">GPU加速: 检测中</span>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 底部指引区 -->
+    <footer class="bg-gray-800 border-t border-gray-700 flex flex-col shrink-0">
+        <div class="h-[60px] flex items-center px-4">
+            <div class="flex-1 overflow-hidden">
+                <div class="scroll-text text-sm text-gray-400">
+                    <span>⚠️ 本软件仅供娱乐用途 | 严禁用于违法违规行为 | 使用者须对自身行为承担全部法律责任 | AI生成内容仅供娱乐</span>
+                </div>
+            </div>
+        </div>
+        <!-- 免责声明 -->
+        <div class="bg-gray-900/50 px-4 py-2 border-t border-gray-700/50">
+            <p class="text-xs text-gray-500 text-center">
+                ⚠️ 免责声明：本软件仅供学习交流与娱乐用途，严禁用于任何违法违规、侵犯他人肖像权或隐私的行为。使用者须对自身行为承担全部法律责任。本软件生成的所有内容均为AI生成，仅供娱乐。
+            </p>
+        </div>
+    </footer>
+
+    <!-- 移动端底部菜单遮罩 -->
+    <div id="sidebarOverlay" class="fixed inset-0 bg-black/50 z-10 hidden md:hidden"></div>
+
+    <!-- 弹窗容器 -->
+    <div id="modalContainer" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/70" id="modalBackdrop"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div id="modalContent" class="bg-gray-800 rounded-xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+                <!-- 弹窗内容动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 权限申请弹窗模板 -->
+    <template id="permissionModal">
+        <div class="p-6">
+            <div class="text-center mb-4">
+                <div class="w-16 h-16 bg-indigo-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <h3 class="text-lg font-semibold mb-2">需要摄像头权限</h3>
+                <p class="text-gray-400 text-sm">为了实现换脸功能，我们需要访问您的摄像头。所有数据仅在本地处理，不会上传到服务器。</p>
+            </div>
+            <div class="flex gap-3">
+                <button class="flex-1 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors" id="permissionCancel">取消</button>
+                <button class="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 transition-colors" id="permissionAllow">允许访问</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- 教程弹窗模板 -->
+    <template id="tutorialModal">
+        <div class="p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold">使用教程</h3>
+                <button class="modal-close p-1 hover:bg-gray-700 rounded">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="space-y-4 text-sm">
+                <div class="tutorial-step">
+                    <div class="step-number">1</div>
+                    <div>
+                        <h4 class="font-medium mb-1">上传人脸素材</h4>
+                        <p class="text-gray-400">点击或拖拽上传您想要换成的目标人脸图片（JPG/PNG格式），系统会自动检测人脸有效性。</p>
+                    </div>
+                </div>
+                <div class="tutorial-step">
+                    <div class="step-number">2</div>
+                    <div>
+                        <h4 class="font-medium mb-1">调节效果参数</h4>
+                        <p class="text-gray-400">通过相似度和修复强度滑块调节换脸效果，相似度越高越接近目标人脸。</p>
+                    </div>
+                </div>
+                <div class="tutorial-step">
+                    <div class="step-number">3</div>
+                    <div>
+                        <h4 class="font-medium mb-1">开始换脸</h4>
+                        <p class="text-gray-400">选择目标人脸素材后，点击“开始换脸”按钮，程序会自动调用摄像头并开始实时换脸。</p>
+                    </div>
+                </div>
+                    
+                <div class="mt-6 p-4 bg-indigo-500/10 rounded-lg border border-indigo-500/20">
+                    <h4 class="font-medium mb-2 text-indigo-400">✨ 视频通话使用教程</h4>
+                    <div class="space-y-3 text-xs">
+                        <div>
+                            <p class="font-medium text-gray-300 mb-1">① 自动调用摄像头</p>
+                            <p class="text-gray-400">程序会自动检测并使用：</p>
+                            <ul class="list-disc list-inside text-gray-400 ml-2 mt-1">
+                                <li>电脑自带摄像头</li>
+                                <li>外接USB摄像头</li>
+                                <li>OBS虚拟摄像头（如果已安装）</li>
+                            </ul>
+                            <p class="text-gray-400 mt-1">可在界面左下角切换摄像头。</p>
+                        </div>
+                            
+                        <div>
+                            <p class="font-medium text-gray-300 mb-1">② 微信/QQ视频通话使用流程</p>
+                            <p class="text-yellow-400 mb-1">⚠️ 重要：微信/QQ无法直接使用，需要通过OBS虚拟摄像头中转！</p>
+                            <ol class="list-decimal list-inside text-gray-400 space-y-1 ml-2">
+                                <li>安装<strong class="text-gray-300">OBS Studio</strong>（免费软件）</li>
+                                <li>启动本换脸程序，上传人脸开始换脸</li>
+                                <li>打开OBS Studio，添加源 → <strong>窗口捕获</strong> → 选择换脸程序窗口</li>
+                                <li>点击OBS的<strong>“启动虚拟摄像头”</strong>按钮</li>
+                                <li>打开微信/QQ，视频设置 → 选择<strong>OBS Virtual Camera</strong></li>
+                                <li>开始视频通话，对方就能看到换脸后的画面！</li>
+                            </ol>
+                        </div>
+                            
+                        <div>
+                            <p class="font-medium text-gray-300 mb-1">③ 性能与流畅度</p>
+                            <table class="w-full text-xs mt-2 border border-gray-700 rounded">
+                                <thead class="bg-gray-700/50">
+                                    <tr>
+                                        <th class="p-2 text-left">电脑配置</th>
+                                        <th class="p-2 text-left">处理速度</th>
+                                        <th class="p-2 text-left">使用体验</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-gray-400">
+                                    <tr class="border-t border-gray-700">
+                                        <td class="p-2">NVIDIA显卡+CUDA</td>
+                                        <td class="p-2">30-50ms/帧</td>
+                                        <td class="p-2"><span class="text-green-400">✅ 流畅实时</span></td>
+                                    </tr>
+                                    <tr class="border-t border-gray-700">
+                                        <td class="p-2">普通电脑(CPU)</td>
+                                        <td class="p-2">200-500ms/帧</td>
+                                        <td class="p-2"><span class="text-yellow-400">⚠️ 有延迟但能用</span></td>
+                                    </tr>
+                                    <tr class="border-t border-gray-700">
+                                        <td class="p-2">低配电脑</td>
+                                        <td class="p-2">&gt;1秒/帧</td>
+                                        <td class="p-2"><span class="text-red-400">❌ 明显卡顿</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                            
+                        <div>
+                            <p class="font-medium text-gray-300 mb-1">④ 优化建议</p>
+                            <ul class="list-disc list-inside text-gray-400 ml-2 space-y-1">
+                                <li><strong>有NVIDIA显卡：</strong>安装CUDA Toolkit后速度提升10倍</li>
+                                <li><strong>普通电脑：</strong>使用480p分辨率，降低延迟</li>
+                                <li><strong>建议：</strong>先本地测试效果，再在视频通话中使用</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-6 p-4 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                <p class="text-yellow-400 text-xs">
+                    <strong>隐私提示：</strong>所有人脸数据仅存储在本地，不会上传至任何服务器。关闭程序后可清除缓存数据。
+                </p>
+            </div>
+        </div>
+    </template>
+
+    <!-- 关于弹窗模板 -->
+    <template id="aboutModal">
+        <div class="p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold">关于本软件</h3>
+                <button class="modal-close p-1 hover:bg-gray-700 rounded">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="text-sm text-gray-400 space-y-3">
+                <div class="p-4 bg-yellow-500/10 rounded-lg border border-yellow-500/20 mb-4">
+                    <p class="text-yellow-400 font-medium mb-2">⚠️ 重要声明</p>
+                    <p class="text-gray-400 text-xs">本软件仅供娱乐用途，所有生成内容均为AI处理结果，不代表真实情况。严禁用于任何违法违规或侵犯他人权益的行为。</p>
+                </div>
+                <p><strong class="text-gray-300">用途：</strong>仅供娱乐体验，不得用于商业或违法用途</p>
+                <p><strong class="text-gray-300">隐私保护：</strong>所有数据均在本地处理，不上传任何服务器</p>
+                <p><strong class="text-gray-300">责任说明：</strong>使用者须对自身行为承担全部法律责任</p>
+            </div>
+        </div>
+    </template>
+
+    <!-- 素材命名弹窗模板 -->
+    <template id="nameModal">
+        <div class="p-6">
+            <h3 class="text-lg font-semibold mb-4">命名素材</h3>
+            <input type="text" id="faceName" class="w-full bg-gray-700 rounded-lg px-4 py-2 border border-gray-600 focus:outline-none focus:border-indigo-500 mb-4" placeholder="请输入素材名称" maxlength="20">
+            <div class="flex gap-3">
+                <button class="flex-1 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors modal-close">取消</button>
+                <button class="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 transition-colors" id="confirmName">确定</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- 预设保存弹窗模板 -->
+    <template id="presetModal">
+        <div class="p-6">
+            <h3 class="text-lg font-semibold mb-4">保存预设</h3>
+            <input type="text" id="presetName" class="w-full bg-gray-700 rounded-lg px-4 py-2 border border-gray-600 focus:outline-none focus:border-indigo-500 mb-4" placeholder="请输入预设名称" maxlength="20">
+            <div class="flex gap-3">
+                <button class="flex-1 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors modal-close">取消</button>
+                <button class="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 transition-colors" id="confirmPreset">保存</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Toast提示 -->
+    <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 bg-gray-800 px-4 py-2 rounded-lg shadow-lg border border-gray-700 text-sm opacity-0 transition-opacity pointer-events-none z-50"></div>
+
+    <!-- 加载遮罩 -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden">
+        <div class="text-center">
+            <div class="loading-spinner mb-4"></div>
+            <p id="loadingText" class="text-gray-300">加载中...</p>
+        </div>
+    </div>
+
+    <!-- JavaScript模块 -->
+    <script src="js/activation.js"></script>
+    <script>
+        // 确保激活码界面显示
+        console.log('激活码模块加载完成');
+        console.log('已激活状态:', typeof Activation !== 'undefined' ? Activation.isActivated() : 'Activation未定义');
+    </script>
+    <script src="js/utils.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/camera.js"></script>
+    <script src="js/faceDetector.js"></script>
+    <script src="js/faceSwap.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
